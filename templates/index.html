@@ -1,0 +1,76 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alerta Tacna – Botón de Pánico</title>
+<style>
+:root{--r:#c62828;--bg:#f4f5f7;--t:#1c1c1e}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Arial;background:var(--bg);color:var(--t)}
+header{background:var(--r);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}
+main{max-width:900px;margin:auto;padding:16px}.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px #0002}
+input,select,button{padding:10px;margin:4px 0;border-radius:8px;border:1px solid #bbb;font-size:15px;width:100%}
+button{background:var(--r);color:#fff;border:0;cursor:pointer;font-weight:600}button.g{background:#555}
+#panico{width:200px;height:200px;border-radius:50%;font-size:24px;display:block;margin:20px auto;box-shadow:0 0 0 12px #c6282833}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-bottom:1px solid #ddd;text-align:left}
+.row{display:flex;gap:8px}.row>*{flex:1}.hide{display:none}.msg{color:var(--r);font-weight:600}
+</style></head><body>
+<header><b>🚨 Alerta Tacna</b><span id="quien"></span></header>
+<main>
+<section id="auth" class="card">
+ <h3>Ingresar</h3>
+ <input id="le" placeholder="Correo"><input id="lp" type="password" placeholder="Contraseña">
+ <button onclick="login()">Entrar</button>
+ <h3>Crear cuenta ciudadana</h3>
+ <div class="row"><input id="rd" placeholder="DNI" maxlength="8"><input id="rn" placeholder="Nombre completo"></div>
+ <div class="row"><input id="rt" placeholder="Teléfono"><input id="re" placeholder="Correo"></div>
+ <div class="row"><input id="rp" type="password" placeholder="Contraseña">
+ <select id="rs"><option>Tacna</option><option>Alto de la Alianza</option><option>Ciudad Nueva</option><option>Gregorio Albarracín</option><option>Pocollay</option></select></div>
+ <button class="g" onclick="registro()">Registrarme</button><p id="m1" class="msg"></p>
+</section>
+
+<section id="ciud" class="hide">
+ <div class="card"><select id="tipo"><option value="robo">Robo</option><option value="agresion">Agresión</option><option value="accidente">Accidente</option><option value="sospechoso">Persona sospechosa</option><option value="emergencia_medica">Emergencia médica</option><option value="otro">Otro</option></select>
+ <input id="desc" placeholder="Descripción breve (opcional)">
+ <button id="panico" onclick="panico()">PÁNICO</button><p id="m2" class="msg" style="text-align:center"></p></div>
+ <div class="card"><h3>Contactos de emergencia</h3>
+ <div class="row"><input id="cn" placeholder="Nombre"><input id="ct" placeholder="Teléfono"><input id="cp" placeholder="Parentesco"></div>
+ <button class="g" onclick="addContacto()">Agregar</button><div id="lc"></div></div>
+ <div class="card"><h3>Mis alertas</h3><div id="ma"></div></div>
+</section>
+
+<section id="pan" class="hide">
+ <div class="card"><h3>Panel de monitoreo <button class="g" style="width:auto" onclick="cargarPanel()">Actualizar</button></h3><div id="pa" style="overflow:auto"></div></div>
+ <div class="card"><h3>Reportes</h3><pre id="rep"></pre></div>
+</section>
+<button class="g hide" id="out" onclick="salir()">Cerrar sesión</button>
+</main>
+<script>
+const $=i=>document.getElementById(i);
+const api=async(u,m='GET',b)=>{const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});return {ok:r.ok,d:await r.json()}};
+async function init(){const {d}=await api('/api/yo');vista(d)}
+function vista(d){const l=!!d.rol;$('auth').classList.toggle('hide',l);$('out').classList.toggle('hide',!l);
+ $('quien').textContent=l?d.nombre+' ('+d.rol+')':'';
+ $('ciud').classList.toggle('hide',d.rol!=='ciudadano');$('pan').classList.toggle('hide',!['operador','admin'].includes(d.rol));
+ if(d.rol==='ciudadano'){cargarC();cargarA()} if(['operador','admin'].includes(d.rol))cargarPanel()}
+async function login(){const r=await api('/api/login','POST',{email:$('le').value,password:$('lp').value});r.ok?vista(r.d):$('m1').textContent=r.d.error}
+async function registro(){const r=await api('/api/registro','POST',{dni:$('rd').value,nombre:$('rn').value,telefono:$('rt').value,email:$('re').value,password:$('rp').value,distrito:$('rs').value});$('m1').textContent=r.ok?'Cuenta creada, ya puedes ingresar':r.d.error}
+async function salir(){await api('/api/logout','POST');location.reload()}
+function panico(){ if(!confirm('¿Enviar alerta de emergencia?'))return;
+ navigator.geolocation.getCurrentPosition(async p=>{
+  const r=await api('/api/alertas','POST',{tipo:$('tipo').value,descripcion:$('desc').value,lat:p.coords.latitude,lng:p.coords.longitude});
+  $('m2').textContent=r.ok?'✅ Alerta enviada. Alerta N° '+r.d.id:r.d.error;cargarA();
+  if(r.ok)setInterval(()=>navigator.geolocation.getCurrentPosition(q=>api('/api/alertas/'+r.d.id+'/ubicacion','POST',{lat:q.coords.latitude,lng:q.coords.longitude})),15000);
+ },()=>{$('m2').textContent='Activa el GPS para enviar tu ubicación'},{enableHighAccuracy:true})}
+async function addContacto(){await api('/api/contactos','POST',{nombre:$('cn').value,telefono:$('ct').value,parentesco:$('cp').value});cargarC()}
+async function cargarC(){const {d}=await api('/api/contactos');$('lc').innerHTML=d.map(c=>`<p>👤 ${c.nombre} – ${c.telefono} (${c.parentesco||''})</p>`).join('')}
+async function cargarA(){const {d}=await api('/api/mis-alertas');$('ma').innerHTML='<table><tr><th>N°</th><th>Tipo</th><th>Estado</th><th>Comisaría</th></tr>'+d.map(a=>`<tr><td>${a.id}</td><td>${a.tipo}</td><td>${a.estado}</td><td>${a.comisaria||''}</td></tr>`).join('')+'</table>'}
+let EF=[];
+async function cargarPanel(){EF=(await api('/api/efectivos')).d;const {d}=await api('/api/panel/alertas');
+ $('pa').innerHTML='<table><tr><th>N°</th><th>Ciudadano</th><th>Tipo</th><th>Mapa</th><th>Estado</th><th>Acción</th></tr>'+d.map(a=>`<tr><td>${a.id}</td><td>${a.ciudadano}<br>${a.telefono||''}</td><td>${a.tipo}</td>
+ <td><a target=_blank href="https://maps.google.com/?q=${a.lat},${a.lng}">Ver</a></td><td>${a.estado}</td><td>${acc(a)}</td></tr>`).join('')+'</table>';
+ const r=(await api('/api/reportes')).d;$('rep').textContent=JSON.stringify(r,null,1)}
+function acc(a){if(a.estado==='pendiente')return `<select id="e${a.id}">${EF.map(e=>`<option value="${e.id}">${e.unidad} - ${e.nombre}</option>`).join('')}</select><button onclick="asig(${a.id})">Asignar</button>`;
+ if(a.estado==='asignada')return `<button onclick="est(${a.id},'en_camino')">En camino</button>`;
+ if(a.estado==='en_camino')return `<button onclick="est(${a.id},'atendida')">Atendida</button><button class="g" onclick="est(${a.id},'falsa')">Falsa</button>`;return '—'}
+async function asig(id){await api('/api/panel/alertas/'+id+'/asignar','POST',{efectivo_id:$('e'+id).value});cargarPanel()}
+async function est(id,s){await api('/api/panel/alertas/'+id+'/estado','POST',{estado:s});cargarPanel()}
+init();
+</script></body></html>
